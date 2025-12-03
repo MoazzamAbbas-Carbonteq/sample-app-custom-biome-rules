@@ -33,5 +33,6 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "plugins": ["./grit-rules/reportassign.grit", "./grit-rules/no-console.grit"]
 }
