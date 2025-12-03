@@ -17,21 +17,21 @@ This is a [Next.js](https://nextjs.org) project that demonstrates how to use [Bi
 First, install dependencies:
 
 ```bash
+pnpm install
+# or
 npm install
 # or
 yarn install
-# or
-pnpm install
 ```
 
 Then, run the development server:
 
 ```bash
+pnpm dev
+# or
 npm run dev
 # or
 yarn dev
-# or
-pnpm dev
 # or
 bun dev
 ```
@@ -46,16 +46,16 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 ```bash
 # Check code for issues
-npm run lint
+pnpm lint
 
 # Fix auto-fixable issues
-npm run lint:fix
+pnpm lint:fix
 
 # Format code
-npm run format
+pnpm format
 
 # Check formatting without making changes
-npm run format:check
+pnpm format:check
 ```
 
 ### Custom Rules
@@ -88,8 +88,8 @@ To test how Husky checks pre-commit:
 3. If there are any linting or formatting issues, the commit will be blocked and you'll see the errors
 4. Fix the issues by running:
    ```bash
-   npm run lint:fix
-   npm run format
+   pnpm lint:fix
+   pnpm format
    ```
 5. Try committing again
 
