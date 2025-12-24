@@ -47,7 +47,7 @@ jobs:
         continue-on-error: true
         run: |
           echo "::add-matcher::.github/workflows/biome-problem-matcher.json"
-          if ! pnpm biome format --check; then
+          if ! pnpm biome format; then
             echo "has_formatting_issues=true" >> $GITHUB_OUTPUT
             echo "::error::Code formatting issues detected"
           else
