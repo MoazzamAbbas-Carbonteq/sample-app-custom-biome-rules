@@ -27,7 +27,6 @@ jobs:
 
       - name: Get pnpm store directory
         id: pnpm-cache
-        shell: bash
         run: |
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
@@ -42,41 +41,39 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # ---------------- FORMAT CHECK ----------------
       - name: Check formatting
         id: format-check
         continue-on-error: true
         run: |
           echo "::add-matcher::.github/workflows/biome-problem-matcher.json"
-          if ! pnpm biome check --only=files-not-formatted; then
+          if ! pnpm biome format --check; then
             echo "has_formatting_issues=true" >> $GITHUB_OUTPUT
             echo "::error::Code formatting issues detected"
           else
             echo "has_formatting_issues=false" >> $GITHUB_OUTPUT
           fi
 
+      # ---------------- LINT CHECK ----------------
       - name: Run linter
         id: lint-check
         continue-on-error: true
         run: |
           echo "::add-matcher::.github/workflows/biome-problem-matcher.json"
-          if ! pnpm biome check --only=linter; then
+          if ! pnpm biome lint; then
             echo "has_linting_issues=true" >> $GITHUB_OUTPUT
             echo "::error::Linting issues detected"
           else
             echo "has_linting_issues=false" >> $GITHUB_OUTPUT
           fi
 
-      # Temporarily commented out - no tests in the project yet
-      # - name: Run tests
-      #   id: test-check
-      #   continue-on-error: true
-      #   run: pnpm test
-
+      # ---------------- BUILD ----------------
       - name: Build project
         id: build-check
         continue-on-error: true
         run: pnpm build
 
+      # ---------------- PR COMMENT ----------------
       - name: Comment on PR with results
         if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
@@ -85,74 +82,56 @@ jobs:
             const hasFormatIssues = '${{ steps.format-check.outputs.has_formatting_issues }}' === 'true';
             const hasLintIssues = '${{ steps.lint-check.outputs.has_linting_issues }}' === 'true';
             const hasBuildIssues = '${{ steps.build-check.outcome }}' === 'failure';
-            const hasTestIssues = false; // Tests are temporarily disabled
 
             let body = '## 📋 CI Results\n\n';
-            
-            if (hasFormatIssues) {
-              body += '❌ **Formatting Issues**: The code is not properly formatted with Biome. Run `pnpm format` to fix.\n\n';
-            } else {
-              body += '✅ **Formatting**: Code is properly formatted.\n\n';
-            }
-            
-            if (hasLintIssues) {
-              body += '❌ **Linting Issues**: There are linting violations that need to be fixed. See the detailed annotations in the checks tab.\n\n';
-            } else {
-              body += '✅ **Linting**: No linting issues found.\n\n';
-            }
-            
-            // Temporarily commented out - no tests in the project yet
-            // if (hasTestIssues) {
-            //   body += '❌ **Tests**: Some tests are failing. Check the logs for details.\n\n';
-            // } else {
-            //   body += '✅ **Tests**: All tests are passing.\n\n';
-            // }
-            
-            body += '⏸️ **Tests**: Tests are temporarily disabled while the project is in development.\n\n';
 
-            if (hasBuildIssues) {
-              body += '❌ **Build**: The project failed to build. Check the logs for details.\n\n';
-            } else {
-              body += '✅ **Build**: The project builds successfully.\n\n';
-            }
-            
+            body += hasFormatIssues
+              ? '❌ **Formatting Issues**: Run `pnpm biome format --write`\n\n'
+              : '✅ **Formatting**: OK\n\n';
+
+            body += hasLintIssues
+              ? '❌ **Linting Issues**: Fix lint errors\n\n'
+              : '✅ **Linting**: OK\n\n';
+
+            body += hasBuildIssues
+              ? '❌ **Build**: Failed\n\n'
+              : '✅ **Build**: Successful\n\n';
+
             body += '---\n\n';
-            
-            if (hasFormatIssues || hasLintIssues || hasBuildIssues) {
-              body += 'Please fix the issues above before merging this PR.\n';
-            } else {
-              body += '🎉 All checks passed! This PR is ready to merge.\n';
-            }
-            
-            // Find existing comment
+            body += hasFormatIssues || hasLintIssues || hasBuildIssues
+              ? 'Please fix the issues above before merging.'
+              : '🎉 All checks passed!';
+
             const { data: comments } = await github.rest.issues.listComments({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
             });
-            
-            const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
-              comment.body.includes('## 📋 CI Results')
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('## 📋 CI Results')
             );
-            
+
             if (botComment) {
               await github.rest.issues.updateComment({
                 comment_id: botComment.id,
-                issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: body
+                body,
               });
             } else {
               await github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: body
+                body,
               });
             }
 
+      # ---------------- FINAL FAIL ----------------
       - name: Fail on issues
-        if: steps.format-check.outputs.has_formatting_issues == 'true' || steps.lint-check.outputs.has_linting_issues == 'true' || steps.build-check.outcome == 'failure'
+        if: |
+          steps.format-check.outputs.has_formatting_issues == 'true' ||
+          steps.lint-check.outputs.has_linting_issues == 'true' ||
+          steps.build-check.outcome == 'failure'
         run: exit 1
