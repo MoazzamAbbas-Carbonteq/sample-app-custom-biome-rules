@@ -1,0 +1,157 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop, development]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-checks:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.9.0"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+          echo "STORE_PATH=$STORE_PATH" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+        env:
+          STORE_PATH: ${{ steps.pnpm-cache.outputs.store-path }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        id: format-check
+        continue-on-error: true
+        run: |
+          echo "::add-matcher::.github/workflows/biome-problem-matcher.json"
+          if ! pnpm biome format --check; then
+            echo "has_formatting_issues=true" >> $GITHUB_OUTPUT
+            echo "::error::Code formatting issues detected"
+          else
+            echo "has_formatting_issues=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run linter
+        id: lint-check
+        continue-on-error: true
+        run: |
+          echo "::add-matcher::.github/workflows/biome-problem-matcher.json"
+          if ! pnpm biome check --reporter=github; then
+            echo "has_linting_issues=true" >> $GITHUB_OUTPUT
+            echo "::error::Linting issues detected"
+          else
+            echo "has_linting_issues=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests
+        id: test-check
+        continue-on-error: true
+        run: pnpm test
+
+      - name: Build project
+        id: build-check
+        continue-on-error: true
+        run: pnpm build
+
+      - name: Comment on PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hasFormatIssues = '${{ steps.format-check.outputs.has_formatting_issues }}' === 'true';
+            const hasLintIssues = '${{ steps.lint-check.outputs.has_linting_issues }}' === 'true';
+            const hasTestIssues = '${{ steps.test-check.outcome }}' === 'failure';
+            const hasBuildIssues = '${{ steps.build-check.outcome }}' === 'failure';
+
+            let body = '## 📋 CI Results\n\n';
+            
+            if (hasFormatIssues) {
+              body += '❌ **Formatting Issues**: The code is not properly formatted with Biome. Run `pnpm format` to fix.\n\n';
+            } else {
+              body += '✅ **Formatting**: Code is properly formatted.\n\n';
+            }
+            
+            if (hasLintIssues) {
+              body += '❌ **Linting Issues**: There are linting violations that need to be fixed. See the detailed annotations in the checks tab.\n\n';
+            } else {
+              body += '✅ **Linting**: No linting issues found.\n\n';
+            }
+            
+            if (hasTestIssues) {
+              body += '❌ **Tests**: Some tests are failing. Check the logs for details.\n\n';
+            } else {
+              body += '✅ **Tests**: All tests are passing.\n\n';
+            }
+
+            if (hasBuildIssues) {
+              body += '❌ **Build**: The project failed to build. Check the logs for details.\n\n';
+            } else {
+              body += '✅ **Build**: The project builds successfully.\n\n';
+            }
+            
+            body += '---\n\n';
+            
+            if (hasFormatIssues || hasLintIssues || hasTestIssues || hasBuildIssues) {
+              body += 'Please fix the issues above before merging this PR.\n';
+            } else {
+              body += '🎉 All checks passed! This PR is ready to merge.\n';
+            }
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('## 📋 CI Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Fail on issues
+        if: steps.format-check.outputs.has_formatting_issues == 'true' || steps.lint-check.outputs.has_linting_issues == 'true' || steps.test-check.outcome == 'failure' || steps.build-check.outcome == 'failure'
+        run: exit 1

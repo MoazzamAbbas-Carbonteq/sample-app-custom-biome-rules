@@ -1,0 +1,33 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "biome",
+      "pattern": [
+        {
+          "regexp": "^(.+) (\\d+):(\\d+) (.*)\\s+(error|warning|info|hint)\\s+(\\S+)\\s+-\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4,
+          "severity": 5,
+          "code": 6,
+          "details": 7
+        }
+      ]
+    },
+    {
+      "owner": "biome-cli",
+      "pattern": [
+        {
+          "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning|info|hint)\\s+(\\S+)\\s+-\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 6
+        }
+      ]
+    }
+  ]
+}
