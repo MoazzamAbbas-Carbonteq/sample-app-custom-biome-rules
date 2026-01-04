@@ -3,6 +3,10 @@ on:
   push:
     branches: [main, development]
   pull_request:
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
 jobs:
   shellcheck:
     name: runner / shellcheck
@@ -112,7 +116,7 @@ jobs:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -s reviewdog-input.txt ]; then
-            cat reviewdog-input.txt | reviewdog -efm="%f:%l:%c:%m" -name="biome" -reporter="github-pr-review" -level="error"
+            cat reviewdog-input.txt | reviewdog -efm="%f:%l:%c:%m" -name="biome" -reporter="github-check" -level="error"
           else
             echo "No Biome violations found."
           fi
