@@ -1,176 +1,59 @@
-name: Reviewdog
-
+name: reviewdog
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-
+  push:
+    branches: [main, development]
 jobs:
-  biome-lint:
-    name: Biome Lint & Format (Reviewdog)
+  shellcheck:
+    name: runner / shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: haya14busa/action-cond@94f77f7a80cd666cb3155084e428254fea4281fd # v1.2.1
+        id: reporter
         with:
-          fetch-depth: 0  # Required for reviewdog to get the base branch
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+          cond: ${{ github.event_name == 'pull_request' }}
+          if_true: "github-pr-review"
+          if_false: "github-check"
+      - uses: reviewdog/action-shellcheck@4c07458293ac342d477251099501a718ae5ef86e # v1.32.0
         with:
-          node-version: '20'
+          reporter: ${{ steps.reporter.outputs.value }}
+          level: warning
+          exclude: "./test/*"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Install reviewdog
-        uses: reviewdog/action-setup@v1
-
-      - name: Get changed files
-        id: changed-files
-        uses: tj-actions/changed-files@v45
-        with:
-          files: |
-            **/*.{js,jsx,ts,tsx,json}
-
-      - name: Run Biome check with reviewdog
-        if: steps.changed-files.outputs.any_changed == 'true'
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Create a temporary file for biome output
-          TEMP_FILE=$(mktemp)
-
-          # Run Biome check and save to temporary file
-          npx biome check --format=json \
-            ${{ steps.changed-files.outputs.all_changed_files }} \
-            > "$TEMP_FILE" 2>&1 || true
-
-          # Process the output and send to reviewdog
-          if [ -s "$TEMP_FILE" ]; then
-            cat "$TEMP_FILE" | reviewdog -f=biome -name="biome" -reporter="github-pr-review" -level="error" -filter-mode="file"
-          fi
-
-          rm "$TEMP_FILE"
-
-      - name: Check formatting with reviewdog
-        if: steps.changed-files.outputs.any_changed == 'true'
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Create a temporary file for format output
-          TEMP_FILE=$(mktemp)
-
-          # Run Biome format check and save to temporary file
-          npx biome format --no-write --reporter=json \
-            ${{ steps.changed-files.outputs.all_changed_files }} \
-            > "$TEMP_FILE" 2>&1 || true
-
-          # Process the output and send to reviewdog
-          if [ -s "$TEMP_FILE" ]; then
-            cat "$TEMP_FILE" | reviewdog -f=biome -name="biome-format" -reporter="github-pr-review" -level="warning" -filter-mode="file"
-          fi
-
-          rm "$TEMP_FILE"
-
-  gritql-rules:
-    name: GritQL Custom Rules (Reviewdog)
+  shfmt:
+    name: runner / shfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: reviewdog/action-shfmt@d8f080930b9be5847b4f97e9f4122b81a82aaeac # v1.0.4
+
+  actionlint:
+    name: runner / actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: reviewdog/action-actionlint@83e4ed25b168066ad8f62f5afbb29ebd8641d982 # v1.69.1
         with:
-          fetch-depth: 0  # Required for reviewdog to get the base branch
+          reporter: github-check
+          level: warning
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+  misspell:
+    name: runner / misspell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: reviewdog/action-misspell@d6429416b12b09b4e2768307d53bef58d172e962 # v1.27.0
         with:
-          node-version: '20'
+          reporter: github-check
+          level: warning
+          locale: "US"
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+  alex:
+    name: runner / alex
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: reviewdog/action-alex@6083b8ca333981fa617c6828c5d8fb21b13d916b # v1.16.0
         with:
-          version: 9
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Install reviewdog and grit
-        uses: reviewdog/action-setup@v1
-        with:
-          reviewdog_version: latest
-
-      - name: Install grit
-        run: pnpm add -g @getgrit/cli
-
-      - name: Get changed files
-        id: changed-files-grit
-        uses: tj-actions/changed-files@v45
-        with:
-          files: |
-            **/*.{js,jsx,ts,tsx}
-
-      - name: Run GritQL rules with reviewdog
-        env:
-          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Debug output
-          echo "Changed files: ${{ steps.changed-files-grit.outputs.all_changed_files }}"
-          echo "Any changed: ${{ steps.changed-files-grit.outputs.any_changed }}"
-          
-          # Always run the checks (remove the if condition)
-          # Create a temporary file for GritQL issues report
-          TEMP_FILE=$(mktemp)
-          
-          # Run on all JS/TS files to ensure we catch violations
-          FILES=$(find . -name "*.ts" -o -name "*.js" -o -name "*.tsx" -o -name "*.jsx" | grep -v node_modules)
-          echo "Files to check: $FILES"
-
-          # Run each GritQL rule and collect results
-          for rule in grit-rules/*.grit; do
-            echo "Running GritQL rule: $(basename "$rule")"
-            echo "Command: grit apply \"$rule\" $FILES --output json"
-            grit apply "$rule" $FILES --output json 2>&1 | \
-            jq -r '.diagnostics[]? | {"source":"gritql","message":.message,"location":{"path":.file,"range":{"start":{"line":(.start.line+1),"column":(.start.column+1)}},"severity":"warning","code":"'$(basename "$rule" .grit)'"}' >> "$TEMP_FILE"
-          done
-
-          # Show the content of the temp file
-          echo "Temp file content:"
-          cat "$TEMP_FILE"
-
-          if [ -s "$TEMP_FILE" ]; then
-            echo "GritQL issues found, sending to reviewdog"
-            cat "$TEMP_FILE" | reviewdog -f=rdjson -name="gritql" -reporter="github-pr-review" -level="warning" -filter-mode="file"
-          else
-            echo "No GritQL issues found"
-          fi
-
-          rm "$TEMP_FILE"
+          reporter: github-check
+          level: warning
