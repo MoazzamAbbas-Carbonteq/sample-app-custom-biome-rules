@@ -1,5 +1,7 @@
 name: reviewdog
+
 on: [pull_request]
+
 jobs:
   biome:
     name: runner / Biome
@@ -9,7 +11,36 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v5
-      - uses: mongolyy/reviewdog-action-biome@v1
         with:
-          github_token: ${{ secrets.github_token }}
-          reporter: github-pr-review
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: latest
+      - name: Install dependencies
+        run: pnpm install
+      - name: Install reviewdog
+        uses: reviewdog/action-setup@v1
+        with:
+          reviewdog_version: latest
+      - name: Run Biome with reviewdog
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.github_token }}
+        run: |
+          set -eo pipefail
+          pnpm biome lint --reporter=json > biome-output.json || true
+          node -e "
+            const fs = require('fs');
+            const biomeOutput = JSON.parse(fs.readFileSync('biome-output.json', 'utf8'));
+            biomeOutput.diagnostics.forEach(diag => {
+              const line = diag.location.span[0] - 1;
+              const column = diag.location.span[1] - 1;
+              const output = \`\${diag.location.path.file}:\${line}:\${column}: \${diag.message[0].content}\`;
+              console.log(output);
+            });
+          " | reviewdog -efm="%f:%l:%c: %m" -reporter=github-pr-review -name="biome"
